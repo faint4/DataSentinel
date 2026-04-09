@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataSentinel 数据哨兵</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="light">
+    <div id="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">&#128737;</span>
+                <h1>DataSentinel <small>数据哨兵</small></h1>
+            </div>
+            <div class="header-actions">
+                <button id="helpBtn" title="使用帮助">&#10067;</button>
+                <button id="themeToggle" title="切换主题">&#9790;</button>
+            </div>
+        </header>
+
+        <div class="layout">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="section">
+                    <h3>扫描配置</h3>
+                    <label for="scanPath">目标目录</label>
+                    <div class="input-group">
+                        <input type="text" id="scanPath" placeholder="C:\Users\Documents" />
+                        <button id="browseBtn" title="选择目录">&#128193;</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>文件类型</h3>
+                    <div id="extCheckboxes" class="ext-grid"></div>
+                    <div class="ext-actions">
+                        <button id="selectAll">全选</button>
+                        <button id="deselectAll">全不选</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h3>检测策略</h3>
+                    <div id="ruleCheckboxes" class="rule-grid"></div>
+                    <div class="ext-actions">
+                        <button id="selectAllRules">全选</button>
+                        <button id="deselectAllRules">全不选</button>
+                    </div>
+                </div>
+
+                <div class="section actions">
+                    <button id="startScan" class="btn-primary">&#9654; 开始扫描</button>
+                    <button id="cancelScan" class="btn-danger" disabled>&#9632; 取消扫描</button>
+                </div>
+
+                <div class="section progress-section">
+                    <h3>扫描进度</h3>
+                    <div class="progress-bar">
+                        <div id="progressFill" class="progress-fill"></div>
+                    </div>
+                    <div id="progressText" class="progress-text">就绪</div>
+                    <div id="progressDetail" class="progress-detail"></div>
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="main">
+                <div class="tabs">
+                    <button class="tab active" data-tab="results">扫描结果</button>
+                    <button class="tab" data-tab="stats">统计概览</button>
+                    <button class="tab" data-tab="report">导出报告</button>
+                </div>
+
+                <!-- Results Tab -->
+                <div id="tab-results" class="tab-content active">
+                    <!-- Live summary bar (shown during & after scan) -->
+                    <div id="resultsSummary" class="results-summary" style="display:none">
+                        <div class="summary-stat"><span class="summary-num" id="rsTotal">0</span><span class="summary-lbl">文件</span></div>
+                        <div class="summary-stat"><span class="summary-num" id="rsSensitive">0</span><span class="summary-lbl">敏感</span></div>
+                        <div class="summary-stat"><span class="summary-num" id="rsMatches">0</span><span class="summary-lbl">匹配</span></div>
+                        <div class="summary-stat"><span class="summary-num" id="rsHighest">-</span><span class="summary-lbl">最高级别</span></div>
+                    </div>
+                    <div class="toolbar">
+                        <div class="level-filters">
+                            <button class="filter-btn active" data-level="0">全部</button>
+                            <button class="filter-btn" data-level="1">L1</button>
+                            <button class="filter-btn" data-level="2">L2</button>
+                            <button class="filter-btn" data-level="3">L3</button>
+                            <button class="filter-btn" data-level="4">L4</button>
+                            <button class="filter-btn" data-level="5">L5</button>
+                        </div>
+                        <div class="toolbar-right">
+                            <span id="filteredCount" class="filtered-count"></span>
+                            <select id="sortSelect">
+                                <option value="level">按级别排序</option>
+                                <option value="path">按路径排序</option>
+                                <option value="matches">按匹配数排序</option>
+                                <option value="size">按大小排序</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="batchToolbar" class="batch-toolbar" style="display:none">
+                        <label class="select-all-label"><input type="checkbox" id="selectAllRows" /> 全选本页</label>
+                        <span id="selectedCount" class="selected-count"></span>
+                        <button id="batchCorrectBtn" class="btn-correct" disabled>&#9998; 批量修正</button>
+                    </div>
+                    <div id="resultsEmpty" class="empty-state">
+                        <p>&#128270; 请选择目录并开始扫描</p>
+                    </div>
+                    <div id="resultsLoading" class="empty-state" style="display:none">
+                        <p>&#9203; 扫描中，已发现 <strong id="liveCount">0</strong> 个文件...</p>
+                    </div>
+                    <table id="resultsTable" class="results-table" style="display:none">
+                        <thead>
+                            <tr>
+                                <th class="th-check"></th>
+                                <th>级别</th>
+                                <th>文件路径</th>
+                                <th>类型</th>
+                                <th>大小</th>
+                                <th>匹配</th>
+                                <th>敏感类型</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultsBody"></tbody>
+                    </table>
+                    <div id="pagination" class="pagination" style="display:none">
+                        <span id="pageInfo" class="page-info"></span>
+                        <div class="page-btns">
+                            <button id="pageFirst" class="page-btn">&laquo;</button>
+                            <button id="pagePrev" class="page-btn">&lsaquo;</button>
+                            <span id="pageNumbers" class="page-numbers"></span>
+                            <button id="pageNext" class="page-btn">&rsaquo;</button>
+                            <button id="pageLast" class="page-btn">&raquo;</button>
+                        </div>
+                        <select id="pageSizeSelect" class="page-size-select">
+                            <option value="50">50条/页</option>
+                            <option value="100">100条/页</option>
+                            <option value="200">200条/页</option>
+                            <option value="500">500条/页</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Stats Tab -->
+                <div id="tab-stats" class="tab-content">
+                    <div id="statsEmpty" class="empty-state">
+                        <p>&#128202; 扫描完成后将显示统计数据</p>
+                    </div>
+                    <div id="statsContent" style="display:none">
+                        <div class="stat-cards">
+                            <div class="stat-card">
+                                <div class="stat-value" id="statTotal">0</div>
+                                <div class="stat-label">总文件数</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="statSensitive">0</div>
+                                <div class="stat-label">含敏感数据</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="statMatches">0</div>
+                                <div class="stat-label">总匹配数</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="statHighest">-</div>
+                                <div class="stat-label">最高级别</div>
+                            </div>
+                        </div>
+                        <div class="charts-row">
+                            <div class="chart-box">
+                                <h3>级别分布</h3>
+                                <div id="levelChart" class="donut-chart"></div>
+                            </div>
+                            <div class="chart-box">
+                                <h3>类别分布</h3>
+                                <div id="categoryChart" class="bar-chart"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Report Tab -->
+                <div id="tab-report" class="tab-content">
+                    <div id="reportEmpty" class="empty-state">
+                        <p>&#128196; 扫描完成后可导出报告</p>
+                    </div>
+                    <div id="reportContent" style="display:none">
+                        <div class="report-summary">
+                            <p>扫描路径: <strong id="reportPath"></strong></p>
+                            <p>文件总数: <strong id="reportFiles">0</strong></p>
+                            <p>扫描时间: <strong id="reportTime"></strong></p>
+                        </div>
+                        <div class="export-buttons">
+                            <button id="exportJSON" class="btn-export">
+                                <span class="btn-icon">&#128196;</span>
+                                导出 JSON 报告
+                            </button>
+                            <button id="exportCSV" class="btn-export">
+                                <span class="btn-icon">&#128202;</span>
+                                导出 CSV 报告
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Detail Modal -->
+    <div id="detailModal" class="modal" style="display:none">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">匹配详情</h3>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div id="modalBody" class="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Browse Directory Modal -->
+    <div id="browseModal" class="modal" style="display:none">
+        <div class="modal-content browse-modal">
+            <div class="modal-header">
+                <h3>选择目录</h3>
+                <button class="modal-close" id="browseClose">&times;</button>
+            </div>
+            <div class="browse-path-bar">
+                <input type="text" id="browsePathInput" placeholder="输入路径后回车..." />
+                <button id="browseGoBtn">跳转</button>
+            </div>
+            <div id="browseList" class="browse-list"></div>
+            <div class="browse-footer">
+                <span id="browseCurrentPath" class="browse-current"></span>
+                <div>
+                    <button id="browseCancelBtn" class="btn-cancel">取消</button>
+                    <button id="browseConfirmBtn" class="btn-primary">选择此目录</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="helpModal" class="modal" style="display:none">
+        <div class="modal-content help-modal">
+            <div class="modal-header">
+                <h3>使用帮助</h3>
+                <button class="modal-close" id="helpClose">&times;</button>
+            </div>
+            <div class="help-body">
+                <nav class="help-nav">
+                    <button class="help-nav-btn active" data-section="guide">快速入门</button>
+                    <button class="help-nav-btn" data-section="levels">分级说明</button>
+                    <button class="help-nav-btn" data-section="rules">检测策略</button>
+                    <button class="help-nav-btn" data-section="faq">常见问题</button>
+                </nav>
+                <div class="help-content">
+                    <div id="helpGuide" class="help-section active">
+                        <h4>四步完成敏感数据扫描</h4>
+                        <div class="step-card">
+                            <div class="step-num">1</div>
+                            <div class="step-body">
+                                <strong>选择目标目录</strong>
+                                <p>在左侧输入路径或点击文件夹按钮浏览选择要扫描的目录。</p>
+                            </div>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-num">2</div>
+                            <div class="step-body">
+                                <strong>配置扫描参数</strong>
+                                <p>选择需要扫描的<strong>文件类型</strong>（如 .txt、.docx、.xlsx）和要检测的<strong>敏感数据策略</strong>（如身份证号、手机号、私钥等）。</p>
+                            </div>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-num">3</div>
+                            <div class="step-body">
+                                <strong>开始扫描</strong>
+                                <p>点击"开始扫描"，等待进度完成。扫描过程中可随时点击"取消扫描"中止。</p>
+                            </div>
+                        </div>
+                        <div class="step-card">
+                            <div class="step-num">4</div>
+                            <div class="step-body">
+                                <strong>查看结果并导出</strong>
+                                <p>在"扫描结果"页按级别筛选、排序，点击"查看"查看匹配详情。切换到"统计概览"查看图表，在"导出报告"页下载 JSON 或 CSV 报告。</p>
+                            </div>
+                        </div>
+                        <h4 style="margin-top:20px">界面区域说明</h4>
+                        <table class="help-table">
+                            <tr><td class="ht-label">左侧栏</td><td>扫描配置区：目录选择、文件类型、检测策略、进度显示</td></tr>
+                            <tr><td class="ht-label">扫描结果</td><td>文件级分类列表，支持级别筛选、排序、分页，点击"查看"展开匹配详情</td></tr>
+                            <tr><td class="ht-label">统计概览</td><td>汇总卡片 + 级别分布环形图 + 类别分布条形图</td></tr>
+                            <tr><td class="ht-label">导出报告</td><td>下载完整扫描报告（JSON 适合程序处理，CSV 适合 Excel 查看）</td></tr>
+                        </table>
+                    </div>
+                    <div id="helpLevels" class="help-section">
+                        <h4>数据分级标准</h4>
+                        <p class="help-note">扫描结果按敏感程度分为 5 个等级，级别越高风险越大。</p>
+                        <div class="level-table">
+                            <div class="level-row"><span class="level-badge" style="background:#22c55e">L1</span><div><strong>公开 (Public)</strong><p>未发现任何敏感数据</p></div></div>
+                            <div class="level-row"><span class="level-badge" style="background:#3b82f6">L2</span><div><strong>内部 (Internal)</strong><p>包含邮箱地址、IP 地址等一般性信息</p></div></div>
+                            <div class="level-row"><span class="level-badge" style="background:#f59e0b">L3</span><div><strong>机密 (Confidential)</strong><p>包含身份证号、手机号、银行卡号、统一社会信用代码等个人敏感信息</p></div></div>
+                            <div class="level-row"><span class="level-badge" style="background:#ef4444">L4</span><div><strong>秘密 (Secret)</strong><p>同一文件中包含 3 项及以上 L3 级别敏感数据，存在批量泄露风险</p></div></div>
+                            <div class="level-row"><span class="level-badge" style="background:#7c3aed">L5</span><div><strong>管控 (Restricted)</strong><p>包含私钥文件、云服务密钥（AWS/GitHub 等）、高熵密钥等核心凭证</p></div></div>
+                        </div>
+                    </div>
+                    <div id="helpRules" class="help-section">
+                        <h4>检测策略说明</h4>
+                        <p class="help-note">共 10 种内置检测策略，可在左侧栏自由组合启用。</p>
+                        <table class="help-table">
+                            <tr><td class="ht-label">身份证号</td><td>18 位中国公民身份证号码，通过 GB 11643-1999 Mod11-2 校验</td></tr>
+                            <tr><td class="ht-label">手机号</td><td>中国大陆手机号码（1xx-xxxxxxxxx 格式）</td></tr>
+                            <tr><td class="ht-label">银行卡号</td><td>13-19 位银行卡号，通过 Luhn/Mod-10 算法校验</td></tr>
+                            <tr><td class="ht-label">邮箱地址</td><td>标准电子邮箱格式</td></tr>
+                            <tr><td class="ht-label">IP地址</td><td>IPv4 地址格式（各段 0-255 校验）</td></tr>
+                            <tr><td class="ht-label">社会信用代码</td><td>18 位统一社会信用代码，通过 GB 32100-2015 Mod31 校验</td></tr>
+                            <tr><td class="ht-label">AWS密钥</td><td>AWS Access Key ID（AKIA 开头的 20 位字符串）</td></tr>
+                            <tr><td class="ht-label">GitHub Token</td><td>GitHub Personal Access Token（ghp_ 开头）</td></tr>
+                            <tr><td class="ht-label">私钥文件</td><td>PEM 格式私钥块（-----BEGIN ... PRIVATE KEY-----）</td></tr>
+                            <tr><td class="ht-label">高熵密钥</td><td>password/secret/token 等键值对中的高随机性字符串（Shannon 熵 &gt; 4.5）</td></tr>
+                        </table>
+                        <h4 style="margin-top:16px">支持的文件类型</h4>
+                        <p>纯文本：.txt .csv .log .json .xml .md .env .yaml .yml .ini .conf .toml .bat .ps1 .sh .sql</p>
+                        <p>Office 文档：.docx .xlsx .pptx（自动提取文本内容）</p>
+                    </div>
+                    <div id="helpFaq" class="help-section">
+                        <h4>常见问题</h4>
+                        <div class="faq-item">
+                            <div class="faq-q">扫描会修改我的文件吗？</div>
+                            <div class="faq-a">不会。DataSentinel 只读取文件内容进行正则匹配分析，不会写入或修改任何文件。</div>
+                        </div>
+                        <div class="faq-item">
+                            <div class="faq-q">为什么有些敏感数据没被检测到？</div>
+                            <div class="faq-a">可能原因：1) 对应的检测策略未勾选；2) 文件类型未纳入扫描范围（如 .pdf 当前不支持）；3) 内容格式不符合检测规则（如身份证号需通过校验位验证，而非简单的 18 位数字匹配）。</div>
+                        </div>
+                        <div class="faq-item">
+                            <div class="faq-q">扫描结果中的值为什么被隐藏了？</div>
+                            <div class="faq-a">匹配值在界面中自动脱敏显示（如 138****5678），防止敏感数据在屏幕上暴露。导出的 JSON/CSV 报告中同样使用脱敏值。</div>
+                        </div>
+                        <div class="faq-item">
+                            <div class="faq-q">扫描大目录会很慢吗？</div>
+                            <div class="faq-a">扫描使用多核并行处理，纯文本文件扫描速度很快。Office 文档（.docx/.xlsx/.pptx）需要解压和 XML 解析，相对较慢。单文件超过 50MB 会自动跳过。</div>
+                        </div>
+                        <div class="faq-item">
+                            <div class="faq-q">数据留在本地吗？</div>
+                            <div class="faq-a">是的。所有扫描和分析完全在本地完成，不联网、不上传任何数据。关闭程序后扫描结果即清除，只有手动导出的报告文件会保留在磁盘上。</div>
+                        </div>
+                        <div class="faq-item">
+                            <div class="faq-q">报告中的 CSV 文件用 Excel 打开乱码怎么办？</div>
+                            <div class="faq-a">导出的 CSV 已添加 UTF-8 BOM 标记，Excel 2016+ 可直接打开。旧版 Excel 请通过"数据 → 从文本/CSV 导入"并选择 UTF-8 编码。</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Welcome Guide Modal (first run) -->
+    <div id="welcomeModal" class="modal" style="display:none">
+        <div class="modal-content welcome-modal">
+            <div class="welcome-header">
+                <span class="welcome-icon">&#128737;</span>
+                <h2>欢迎使用 DataSentinel 数据哨兵</h2>
+                <p>轻量级敏感数据扫描工具，快速发现文件中的安全风险</p>
+            </div>
+            <div class="welcome-steps">
+                <div class="welcome-step">
+                    <span class="welcome-step-icon">&#128193;</span>
+                    <strong>选择目录</strong>
+                    <span>指定要扫描的文件夹</span>
+                </div>
+                <div class="welcome-step">
+                    <span class="welcome-step-icon">&#9881;</span>
+                    <strong>配置策略</strong>
+                    <span>选择文件类型和检测规则</span>
+                </div>
+                <div class="welcome-step">
+                    <span class="welcome-step-icon">&#128269;</span>
+                    <strong>开始扫描</strong>
+                    <span>自动识别敏感数据</span>
+                </div>
+                <div class="welcome-step">
+                    <span class="welcome-step-icon">&#128202;</span>
+                    <strong>查看报告</strong>
+                    <span>分级结果和统计图表</span>
+                </div>
+            </div>
+            <div class="welcome-footer">
+                <label class="welcome-dont-show"><input type="checkbox" id="dontShowAgain" /> 不再显示</label>
+                <button id="welcomeStartBtn" class="btn-primary welcome-btn">开始使用</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Correction Modal -->
+    <div id="correctModal" class="modal" style="display:none">
+        <div class="modal-content correct-modal">
+            <div class="modal-header">
+                <h3 id="correctTitle">修正分类</h3>
+                <button class="modal-close" id="correctClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="correct-field">
+                    <label>修正后级别</label>
+                    <select id="correctLevel">
+                        <option value="1">L1 - 公开（无敏感数据）</option>
+                        <option value="2">L2 - 内部（邮箱/IP等）</option>
+                        <option value="3">L3 - 机密（个人敏感信息）</option>
+                        <option value="4">L4 - 秘密（批量泄露风险）</option>
+                        <option value="5">L5 - 管控（核心凭证）</option>
+                    </select>
+                </div>
+                <div class="correct-field">
+                    <label>修正说明（可选）</label>
+                    <input type="text" id="correctNote" placeholder="如：误报，此IP为内网测试地址" />
+                </div>
+                <div class="correct-actions">
+                    <button id="correctCancelBtn" class="btn-cancel">取消</button>
+                    <button id="correctConfirmBtn" class="btn-primary">确认修正</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

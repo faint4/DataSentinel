@@ -1,0 +1,23 @@
+# Binaries
+*.exe
+*.exe~
+
+# Build output
+/dist/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Go
+vendor/
