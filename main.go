@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -12,18 +14,33 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/datasentinel/datasentinel/model"
+	"github.com/datasentinel/datasentinel/scanner"
 	"github.com/datasentinel/datasentinel/server"
 	"github.com/datasentinel/datasentinel/ui"
 	"github.com/pkg/browser"
 )
 
 func main() {
+	headless := flag.Bool("headless", false, "Run in headless CLI mode")
+	scanPath := flag.String("scan", "", "Directory to scan (headless mode)")
+	outputPath := flag.String("output", "", "Path to save JSON report (headless mode)")
+	flag.Parse()
+
 	// 1. Initialize logging to both console and file
 	logFile := initLogger()
 	if logFile != nil {
 		defer logFile.Close()
 	}
 	log.Println("[MAIN] DataSentinel 数据哨兵 v1.0 启动")
+
+	if *headless {
+		if *scanPath == "" {
+			log.Fatal("[MAIN] --scan 参数在 headless 模式下是必需的")
+		}
+		runHeadlessMode(*scanPath, *outputPath)
+		return
+	}
 
 	// 2. Listen on random available port
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -65,6 +82,52 @@ func main() {
 	// 7. Graceful shutdown
 	log.Println("[MAIN] 正在关闭...")
 	_ = httpServer.Shutdown(context.Background())
+}
+
+func runHeadlessMode(scanPath, outputPath string) {
+	log.Printf("[MAIN] 无头模式启动，扫描目录: %s", scanPath)
+
+	req := model.ScanRequest{
+		Path:       scanPath,
+		Extensions: model.SupportedExtensions(),
+		Categories: []string{}, // all categories
+	}
+
+	progressCh := make(chan model.ProgressEvent, 256)
+	scan := scanner.NewScanner(progressCh, req.Categories)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		for evt := range progressCh {
+			if evt.Type == model.ProgressFileDone {
+				// Optional: output progress if needed, but keeping console clean is often preferred.
+			}
+		}
+	}()
+
+	report, err := scan.Scan(ctx, req)
+	if err != nil {
+		log.Fatalf("[MAIN] 扫描失败: %v", err)
+	}
+
+	log.Printf("[MAIN] 扫描完成: 发现 %d 个文件，%d 个匹配项", report.Summary.TotalFiles, report.Summary.TotalMatches)
+
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		log.Fatalf("[MAIN] 序列化报告失败: %v", err)
+	}
+
+	if outputPath != "" {
+		err = os.WriteFile(outputPath, data, 0644)
+		if err != nil {
+			log.Fatalf("[MAIN] 写入报告失败: %v", err)
+		}
+		log.Printf("[MAIN] 报告已保存至: %s", outputPath)
+	} else {
+		fmt.Println(string(data))
+	}
 }
 
 func logPath() string {

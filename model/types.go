@@ -131,6 +131,6 @@ func SupportedExtensions() []string {
 		".txt", ".csv", ".log", ".json", ".xml", ".md",
 		".env", ".yaml", ".yml", ".ini", ".conf", ".toml",
 		".bat", ".ps1", ".sh", ".sql",
-		".docx", ".xlsx", ".pptx",
+		".docx", ".xlsx", ".pptx", ".zip",
 	}
 }

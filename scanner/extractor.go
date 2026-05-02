@@ -31,6 +31,8 @@ func ExtractText(path string, ext string) (string, error) {
 		return extractXLSX(path)
 	case ".pptx":
 		return extractPPTX(path)
+	case ".zip":
+		return extractZIP(path)
 	default:
 		return "", fmt.Errorf("unsupported file type: %s", ext)
 	}
@@ -306,6 +308,76 @@ func extractPPTX(path string) (string, error) {
 
 // --- Utility ---
 
+// --- ZIP extraction ---
+
+func extractZIP(path string) (string, error) {
+	rc, err := zip.OpenReader(path)
+	if err != nil {
+		return "", fmt.Errorf("open zip: %w", err)
+	}
+	defer rc.Close()
+
+	var buf strings.Builder
+	for _, f := range rc.File {
+		ext := FilePathExt(f.Name)
+		if !IsScannable(ext) || ext == ".zip" {
+			continue // skip unsupported or nested zips to avoid infinite loops/complexity
+		}
+
+		data, err := readZipFile(f)
+		if err != nil {
+			continue
+		}
+
+		if len(data) > maxTextSize {
+			data = data[:maxTextSize]
+		}
+
+		// Quick plain text extraction logic for ZIP contents
+		// This handles .txt, .json, .csv, etc inside a zip.
+		// For .docx/xlsx inside zip, it's more complex, MVP will treat them as plain text/skipped or we only handle text files.
+		// MVP: just stringify text-based files for simplicity if it's utf8/gbk.
+		if isPlainTextExt(ext) {
+			trimmed := bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+			if utf8.Valid(trimmed) {
+				buf.WriteString(string(trimmed))
+				buf.WriteByte('\n')
+			} else {
+				reader := transform.NewReader(bytes.NewReader(trimmed), simplifiedchinese.GBK.NewDecoder())
+				converted, err := io.ReadAll(reader)
+				if err == nil {
+					buf.WriteString(string(converted))
+					buf.WriteByte('\n')
+				} else {
+					buf.WriteString(strings.ToValidUTF8(string(trimmed), "?"))
+					buf.WriteByte('\n')
+				}
+			}
+		}
+
+		if buf.Len() > maxTextSize {
+			break
+		}
+	}
+
+	result := buf.String()
+	if len(result) > maxTextSize {
+		result = result[:maxTextSize]
+	}
+	return result, nil
+}
+
+func isPlainTextExt(ext string) bool {
+	ext = strings.ToLower(ext)
+	plainText := map[string]bool{
+		".txt": true, ".csv": true, ".log": true, ".json": true, ".xml": true,
+		".md": true, ".env": true, ".yaml": true, ".yml": true, ".ini": true,
+		".conf": true, ".toml": true, ".bat": true, ".ps1": true, ".sh": true,
+		".sql": true,
+	}
+	return plainText[ext]
+}
+
 func readZipFile(f *zip.File) ([]byte, error) {
 	rc, err := f.Open()
 	if err != nil {
@@ -326,7 +398,7 @@ func IsScannable(ext string) bool {
 		".txt": true, ".csv": true, ".log": true, ".json": true, ".xml": true,
 		".md": true, ".env": true, ".yaml": true, ".yml": true, ".ini": true,
 		".conf": true, ".toml": true, ".bat": true, ".ps1": true, ".sh": true,
-		".sql": true, ".docx": true, ".xlsx": true, ".pptx": true,
+		".sql": true, ".docx": true, ".xlsx": true, ".pptx": true, ".zip": true,
 	}
 	return scannable[ext]
 }
