@@ -12,10 +12,11 @@ const maxFileSize = 50 * 1024 * 1024 // 50MB
 
 // FileInfo holds lightweight file metadata for the scanning pipeline.
 type FileInfo struct {
-	Path string
-	Name string
-	Ext  string
-	Size int64
+	Path    string
+	Name    string
+	Ext     string
+	Size    int64
+	ModTime int64
 }
 
 // WalkFiles recursively walks a directory tree, filtering by extension.
@@ -62,10 +63,11 @@ func WalkFiles(ctx context.Context, root string, exts []string) (<-chan FileInfo
 			}
 
 			fi := FileInfo{
-				Path: path,
-				Name: d.Name(),
-				Ext:  ext,
-				Size: info.Size(),
+				Path:    path,
+				Name:    d.Name(),
+				Ext:     ext,
+				Size:    info.Size(),
+				ModTime: info.ModTime().Unix(),
 			}
 
 			select {

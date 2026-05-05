@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/transform"
+	"github.com/ledongthuc/pdf"
 )
 
 const maxTextSize = 2 * 1024 * 1024 // 2MB text extraction limit
@@ -33,9 +34,45 @@ func ExtractText(path string, ext string) (string, error) {
 		return extractPPTX(path)
 	case ".zip":
 		return extractZIP(path)
+	case ".pdf":
+		return extractPDF(path)
 	default:
 		return "", fmt.Errorf("unsupported file type: %s", ext)
 	}
+}
+
+// --- PDF extraction ---
+
+func extractPDF(path string) (string, error) {
+	f, r, err := pdf.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("open pdf: %w", err)
+	}
+	defer f.Close()
+
+	var buf strings.Builder
+	totalPage := r.NumPage()
+	for pageIndex := 1; pageIndex <= totalPage; pageIndex++ {
+		p := r.Page(pageIndex)
+		if p.V.IsNull() {
+			continue
+		}
+		text, err := p.GetPlainText(nil)
+		if err != nil {
+			continue
+		}
+		buf.WriteString(text)
+		buf.WriteByte('\n')
+		if buf.Len() > maxTextSize {
+			break
+		}
+	}
+
+	result := buf.String()
+	if len(result) > maxTextSize {
+		result = result[:maxTextSize]
+	}
+	return result, nil
 }
 
 // extractPlainText reads a text file with auto-detection of UTF-8/GBK encoding.
@@ -384,7 +421,10 @@ func readZipFile(f *zip.File) ([]byte, error) {
 		return nil, fmt.Errorf("open %s: %w", f.Name, err)
 	}
 	defer rc.Close()
-	data, err := io.ReadAll(rc)
+
+	// Prevent zip bomb OOM by limiting read size
+	limitReader := io.LimitReader(rc, maxTextSize)
+	data, err := io.ReadAll(limitReader)
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", f.Name, err)
 	}
@@ -398,7 +438,7 @@ func IsScannable(ext string) bool {
 		".txt": true, ".csv": true, ".log": true, ".json": true, ".xml": true,
 		".md": true, ".env": true, ".yaml": true, ".yml": true, ".ini": true,
 		".conf": true, ".toml": true, ".bat": true, ".ps1": true, ".sh": true,
-		".sql": true, ".docx": true, ".xlsx": true, ".pptx": true, ".zip": true,
+		".sql": true, ".docx": true, ".xlsx": true, ".pptx": true, ".zip": true, ".pdf": true,
 	}
 	return scannable[ext]
 }

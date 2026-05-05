@@ -2,6 +2,8 @@ package rules
 
 import (
 	"bufio"
+	"encoding/json"
+	"os"
 	"regexp"
 	"strings"
 
@@ -115,6 +117,42 @@ func DefaultRules() []Rule {
 			MaskValue: maskAll,
 		},
 	}
+}
+
+// CustomRuleConfig is used to load custom rules from JSON.
+type CustomRuleConfig struct {
+	Name     string `json:"name"`
+	Category string `json:"category"`
+	Pattern  string `json:"pattern"`
+}
+
+// LoadCustomRules reads a JSON file and parses custom rules.
+func LoadCustomRules(path string) ([]Rule, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var configs []CustomRuleConfig
+	if err := json.Unmarshal(data, &configs); err != nil {
+		return nil, err
+	}
+
+	var customRules []Rule
+	for _, cfg := range configs {
+		pattern, err := regexp.Compile(cfg.Pattern)
+		if err != nil {
+			continue // skip invalid regex
+		}
+
+		customRules = append(customRules, Rule{
+			Name:     cfg.Name,
+			Category: model.RuleCategory(cfg.Category),
+			Pattern:  pattern,
+			MaskValue: maskAll, // default mask for custom rules
+		})
+	}
+	return customRules, nil
 }
 
 // --- Masking helpers ---

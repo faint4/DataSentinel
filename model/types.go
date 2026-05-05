@@ -125,12 +125,25 @@ type ScanReport struct {
 	EndedAt   int64        `json:"ended_at"`
 }
 
+// FileHistory represents stored metadata for a file to support incremental scanning.
+type FileHistory struct {
+	Path    string `json:"path"`
+	Size    int64  `json:"size"`
+	ModTime int64  `json:"mod_time"`
+	Level   Level  `json:"level"`
+}
+
+// ScanHistory maps file paths to their last known state.
+type ScanHistory struct {
+	Files map[string]FileHistory `json:"files"`
+}
+
 // SupportedExtensions returns all file extensions the MVP can scan.
 func SupportedExtensions() []string {
 	return []string{
 		".txt", ".csv", ".log", ".json", ".xml", ".md",
 		".env", ".yaml", ".yml", ".ini", ".conf", ".toml",
 		".bat", ".ps1", ".sh", ".sql",
-		".docx", ".xlsx", ".pptx", ".zip",
+		".docx", ".xlsx", ".pptx", ".zip", ".pdf",
 	}
 }

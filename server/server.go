@@ -90,7 +90,7 @@ func (s *Server) handleScanStart(w http.ResponseWriter, r *http.Request) {
 	s.addProgressSub(progressCh)
 	defer s.removeProgressSub(progressCh)
 
-	scan := scanner.NewScanner(progressCh, req.Categories)
+	scan := scanner.NewScanner(progressCh, req.Categories) // UI doesn't supply custom rules yet
 	log.Printf("[SCAN] 开始扫描: path=%s exts=%v categories=%v", req.Path, req.Extensions, req.Categories)
 
 	go func() {

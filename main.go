@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/datasentinel/datasentinel/model"
+	"github.com/datasentinel/datasentinel/rules"
 	"github.com/datasentinel/datasentinel/scanner"
 	"github.com/datasentinel/datasentinel/server"
 	"github.com/datasentinel/datasentinel/ui"
@@ -25,6 +26,8 @@ func main() {
 	headless := flag.Bool("headless", false, "Run in headless CLI mode")
 	scanPath := flag.String("scan", "", "Directory to scan (headless mode)")
 	outputPath := flag.String("output", "", "Path to save JSON report (headless mode)")
+	rulesPath := flag.String("rules", "", "Path to custom rules JSON file (headless mode)")
+	redactDir := flag.String("redact", "", "Directory to save redacted copies of files (headless mode)")
 	flag.Parse()
 
 	// 1. Initialize logging to both console and file
@@ -38,7 +41,7 @@ func main() {
 		if *scanPath == "" {
 			log.Fatal("[MAIN] --scan 参数在 headless 模式下是必需的")
 		}
-		runHeadlessMode(*scanPath, *outputPath)
+		runHeadlessMode(*scanPath, *outputPath, *rulesPath, *redactDir)
 		return
 	}
 
@@ -84,7 +87,7 @@ func main() {
 	_ = httpServer.Shutdown(context.Background())
 }
 
-func runHeadlessMode(scanPath, outputPath string) {
+func runHeadlessMode(scanPath, outputPath string, rulesPath string, redactDir string) {
 	log.Printf("[MAIN] 无头模式启动，扫描目录: %s", scanPath)
 
 	req := model.ScanRequest{
@@ -93,8 +96,19 @@ func runHeadlessMode(scanPath, outputPath string) {
 		Categories: []string{}, // all categories
 	}
 
+	var customRules []rules.Rule
+	if rulesPath != "" {
+		cr, err := rules.LoadCustomRules(rulesPath)
+		if err != nil {
+			log.Printf("[MAIN] 无法加载自定义规则: %v", err)
+		} else {
+			customRules = cr
+			log.Printf("[MAIN] 成功加载 %d 条自定义规则", len(customRules))
+		}
+	}
+
 	progressCh := make(chan model.ProgressEvent, 256)
-	scan := scanner.NewScanner(progressCh, req.Categories)
+	scan := scanner.NewScanner(progressCh, req.Categories, customRules...)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -127,6 +141,20 @@ func runHeadlessMode(scanPath, outputPath string) {
 		log.Printf("[MAIN] 报告已保存至: %s", outputPath)
 	} else {
 		fmt.Println(string(data))
+	}
+
+	if redactDir != "" {
+		log.Printf("[MAIN] 开始脱敏处理，输出目录: %s", redactDir)
+		redactedCount := 0
+		for _, fr := range report.Results {
+			if len(fr.Matches) > 0 {
+				err := scanner.RedactFile(fr, scanPath, redactDir)
+				if err == nil {
+					redactedCount++
+				}
+			}
+		}
+		log.Printf("[MAIN] 脱敏完成，共处理 %d 个文件", redactedCount)
 	}
 }
 
