@@ -22,7 +22,7 @@ A lightweight Windows tool for scanning and classifying sensitive data in files.
 |---|---|
 | **10 Built-in Detection Rules** / 10 种内置检测规则 | ID cards, phone numbers, bank cards, emails, IPs, USCC, AWS keys, GitHub tokens, private keys, high-entropy secrets |
 | **5-Level Classification** / 5 级分类标准 | L1 Public → L2 Internal → L3 Confidential → L4 Secret → L5 Restricted |
-| **19 File Formats** / 19 种文件格式 | Plain text (.txt/.csv/.log/.json/.xml/.md/.env/.yaml/.yml/.ini/.conf/.toml/.bat/.ps1/.sh/.sql) + Office (.docx/.xlsx/.pptx) |
+| **21 File Formats** / 21 种文件格式 | Plain text (.txt/.csv/.log/.json/.xml/.md/.env/.yaml/.yml/.ini/.conf/.toml/.bat/.ps1/.sh/.sql) + Office (.docx/.xlsx/.pptx) + Archives (.zip) + PDF (.pdf) |
 | **Multi-core Parallel Scanning** / 多核并行扫描 | Auto-utilizes multi-core CPU with real-time progress updates |
 | **False Positive Correction** / 误报修正 | Single or batch correction of classification results; exports include both original and corrected results |
 | **Visual Statistics** / 可视化统计 | Donut chart for level distribution, bar chart for category breakdown, summary cards |
@@ -42,6 +42,20 @@ A lightweight Windows tool for scanning and classifying sensitive data in files.
 > If the browser doesn't open automatically, check `datasentinel.log` in the same directory for the access URL.
 >
 > 如果浏览器未自动打开，查看程序同目录下 `datasentinel.log` 获取访问地址。
+
+### CLI Headless Mode / 无头模式
+
+For automation or CI/CD pipelines, you can run DataSentinel without opening the browser:
+
+```bash
+datasentinel.exe --headless --scan "C:\path\to\scan" --output report.json --rules custom.json --redact "C:\path\to\output"
+```
+
+*   `--headless`: Run in console mode without UI.
+*   `--scan`: Target directory to scan.
+*   `--output`: File to save the JSON report.
+*   `--rules`: (Optional) JSON file containing custom detection rules.
+*   `--redact`: (Optional) Output directory to save redacted copies of plain text files with sensitive info masked by `*`.
 
 ### Usage / 使用步骤
 

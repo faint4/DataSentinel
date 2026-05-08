@@ -2,7 +2,10 @@ package scanner
 
 import (
 	"context"
+	"encoding/json"
 	"log"
+	"os"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"time"
@@ -15,11 +18,14 @@ import (
 type Scanner struct {
 	rules    []rules.Rule
 	progress chan<- model.ProgressEvent
+	history  model.ScanHistory
 }
 
 // NewScanner creates a Scanner with compiled default rules, optionally filtered by categories.
-func NewScanner(progress chan<- model.ProgressEvent, categories []string) *Scanner {
+func NewScanner(progress chan<- model.ProgressEvent, categories []string, customRules ...rules.Rule) *Scanner {
 	allRules := rules.DefaultRules()
+	allRules = append(allRules, customRules...)
+
 	var filtered []rules.Rule
 	if len(categories) == 0 {
 		filtered = allRules
@@ -38,11 +44,52 @@ func NewScanner(progress chan<- model.ProgressEvent, categories []string) *Scann
 	return &Scanner{
 		rules:    filtered,
 		progress: progress,
+		history:  model.ScanHistory{Files: make(map[string]model.FileHistory)},
+	}
+}
+
+func (s *Scanner) loadHistory() {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	histPath := filepath.Join(filepath.Dir(exe), ".datasentinel_history.json")
+	data, err := os.ReadFile(histPath)
+	if err == nil {
+		var h model.ScanHistory
+		if err := json.Unmarshal(data, &h); err == nil && h.Files != nil {
+			s.history = h
+		}
+	}
+	if s.history.Files == nil {
+		s.history.Files = make(map[string]model.FileHistory)
+	}
+}
+
+func (s *Scanner) saveHistory(report *model.ScanReport) {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	histPath := filepath.Join(filepath.Dir(exe), ".datasentinel_history.json")
+	for _, fr := range report.Results {
+		s.history.Files[fr.Path] = model.FileHistory{
+			Path:    fr.Path,
+			Size:    fr.Size,
+			ModTime: fr.ScannedAt, // MVP: using scan time as a proxy, or ideally actual file mod time. Wait, FileInfo has ModTime. We should pass it along.
+			Level:   fr.Level,
+		}
+	}
+	data, err := json.Marshal(s.history)
+	if err == nil {
+		os.WriteFile(histPath, data, 0644)
 	}
 }
 
 // Scan runs the full pipeline: walk -> extract -> match -> classify.
 func (s *Scanner) Scan(ctx context.Context, req model.ScanRequest) (*model.ScanReport, error) {
+	s.loadHistory()
+
 	extensions := req.Extensions
 	if len(extensions) == 0 {
 		extensions = model.SupportedExtensions()
@@ -101,11 +148,28 @@ func (s *Scanner) Scan(ctx context.Context, req model.ScanRequest) (*model.ScanR
 	report.EndedAt = time.Now().Unix()
 	report.Summary = computeSummary(report.Results)
 
+	s.saveHistory(report)
 	s.sendProgress(model.ProgressEvent{Type: model.ProgressScanDone})
 	return report, nil
 }
 
 func (s *Scanner) processFile(ctx context.Context, fp FileInfo) model.FileResult {
+	if hist, ok := s.history.Files[fp.Path]; ok {
+		if hist.Size == fp.Size && hist.ModTime == fp.ModTime && hist.Level == model.L1Public {
+			// Skip actual scan for L1 files to save time.
+			// If it's > L1, we must rescan to populate Matches for redaction and reporting.
+			return model.FileResult{
+				Path:      fp.Path,
+				Name:      fp.Name,
+				Ext:       fp.Ext,
+				Size:      fp.Size,
+				Level:     hist.Level,
+				LevelName: hist.Level.String(),
+				ScannedAt: fp.ModTime,
+			}
+		}
+	}
+
 	text, err := ExtractText(fp.Path, fp.Ext)
 	if err != nil {
 		return model.FileResult{
@@ -139,7 +203,7 @@ func (s *Scanner) processFile(ctx context.Context, fp FileInfo) model.FileResult
 		Level:     level,
 		LevelName: level.String(),
 		Matches:   allMatches,
-		ScannedAt: time.Now().Unix(),
+		ScannedAt: fp.ModTime, // Save actual mod time here so it gets into history
 	}
 }
 
