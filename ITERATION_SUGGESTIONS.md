@@ -34,3 +34,11 @@
 * **高级可视化与导出**: 在统计图表页增加更多维度的分析（如按目录分布、按文件类型分布）。支持导出更详细的 Excel 报告（带多工作表分类）。
 * **国际化 (I18N) 支持**: 虽然当前同时有中英说明，但在界面中增加明显的语言切换按钮（中文/英文），有利于推广给全球用户。
 * **文件上下文高亮预览**: 在查看匹配详情时，利用类似 Monaco Editor 或简单的富文本组件，将前后几十行的代码上下文渲染出来，并将敏感词高亮，方便用户更快速地判定是否为误报。
+
+## 6. 下一步深度演进 (Advanced Next-Level Optimizations)
+在完成了基础的扫描、CLI 以及脱敏功能后，建议继续推进以下深度演进：
+* **SARIF 报告导出支持**: 在命令行模式中新增 `--sarif` 参数，导出 [SARIF (Static Analysis Results Interchange Format)](https://sarifweb.azurewebsites.net/) 格式。这是现代代码安全分析的标准格式，使得工具的扫描结果可以直接被 GitHub Advanced Security 拦截并以代码注释的形式显示。
+* **CI/CD 自动化集成体系**: 提供开箱即用的 GitHub Actions 工作流模板（`.github/workflows`），以及在 Gitlab CI 中配置该工具扫描代码库的示例，将安全左移。
+* **Git Pre-commit Hook 生成**: 提供一个命令（例如 `datasentinel --install-hook`），自动向当前仓库写入 `.git/hooks/pre-commit` 脚本。这使得开发者在提交代码到本地暂存区之前，如果发现新增内容包含硬编码密码或敏感数据则自动阻止提交。
+* **增量扫描机制升级**: 目前的基于文件修改时间的增量扫描已经实现，但针对大文件，可以更进一步实现“按块(Block)哈希增量对比”以减少内存损耗，或集成 `git diff` 引擎，仅针对变更的文本行进行扫描和告警。
+* **测试覆盖率与单元测试**: 添加针对各个核心模块的 `go test` 单元测试，特别是针对 `rules/patterns.go` 中的正则匹配规则进行覆盖率测试，以确保未来调整规则时不会引入退化（Regression）。

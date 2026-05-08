@@ -28,6 +28,7 @@ func main() {
 	outputPath := flag.String("output", "", "Path to save JSON report (headless mode)")
 	rulesPath := flag.String("rules", "", "Path to custom rules JSON file (headless mode)")
 	redactDir := flag.String("redact", "", "Directory to save redacted copies of files (headless mode)")
+	sarifOut := flag.String("sarif", "", "Path to save SARIF format report (headless mode)")
 	flag.Parse()
 
 	// 1. Initialize logging to both console and file
@@ -41,7 +42,7 @@ func main() {
 		if *scanPath == "" {
 			log.Fatal("[MAIN] --scan 参数在 headless 模式下是必需的")
 		}
-		runHeadlessMode(*scanPath, *outputPath, *rulesPath, *redactDir)
+		runHeadlessMode(*scanPath, *outputPath, *rulesPath, *redactDir, *sarifOut)
 		return
 	}
 
@@ -87,7 +88,7 @@ func main() {
 	_ = httpServer.Shutdown(context.Background())
 }
 
-func runHeadlessMode(scanPath, outputPath string, rulesPath string, redactDir string) {
+func runHeadlessMode(scanPath, outputPath string, rulesPath string, redactDir string, sarifOut string) {
 	log.Printf("[MAIN] 无头模式启动，扫描目录: %s", scanPath)
 
 	req := model.ScanRequest{
@@ -140,7 +141,21 @@ func runHeadlessMode(scanPath, outputPath string, rulesPath string, redactDir st
 		}
 		log.Printf("[MAIN] 报告已保存至: %s", outputPath)
 	} else {
-		fmt.Println(string(data))
+		if sarifOut == "" {
+			fmt.Println(string(data))
+		}
+	}
+
+	if sarifOut != "" {
+		f, err := os.Create(sarifOut)
+		if err != nil {
+			log.Fatalf("[MAIN] 创建 SARIF 文件失败: %v", err)
+		}
+		defer f.Close()
+		if err := server.WriteSARIF(f, report); err != nil {
+			log.Fatalf("[MAIN] 写入 SARIF 报告失败: %v", err)
+		}
+		log.Printf("[MAIN] SARIF 报告已保存至: %s", sarifOut)
 	}
 
 	if redactDir != "" {

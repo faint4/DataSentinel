@@ -83,6 +83,103 @@ func formatFileSize(bytes int64) string {
 	return scanner.FormatFileSize(bytes)
 }
 
+// WriteSARIF converts the ScanReport to SARIF format and writes it.
+func WriteSARIF(w io.Writer, report *model.ScanReport) error {
+	type message struct {
+		Text string `json:"text"`
+	}
+	type artifactLocation struct {
+		Uri string `json:"uri"`
+	}
+	type region struct {
+		StartLine   int `json:"startLine"`
+		StartColumn int `json:"startColumn"`
+	}
+	type physicalLocation struct {
+		ArtifactLocation artifactLocation `json:"artifactLocation"`
+		Region           region           `json:"region"`
+	}
+	type location struct {
+		PhysicalLocation physicalLocation `json:"physicalLocation"`
+	}
+	type result struct {
+		RuleId    string     `json:"ruleId"`
+		Message   message    `json:"message"`
+		Locations []location `json:"locations"`
+		Level     string     `json:"level"`
+	}
+	type toolComponent struct {
+		Name    string `json:"name"`
+		Version string `json:"version"`
+	}
+	type tool struct {
+		Driver toolComponent `json:"driver"`
+	}
+	type run struct {
+		Tool    tool     `json:"tool"`
+		Results []result `json:"results"`
+	}
+	type sarifDocument struct {
+		Version string `json:"version"`
+		Schema  string `json:"$schema"`
+		Runs    []run  `json:"runs"`
+	}
+
+	var results []result
+	for _, fr := range report.Results {
+		if len(fr.Matches) == 0 {
+			continue
+		}
+		for _, m := range fr.Matches {
+			level := "warning"
+			if fr.Level >= model.L4Secret {
+				level = "error"
+			}
+			res := result{
+				RuleId: string(m.Category),
+				Message: message{
+					Text: fmt.Sprintf("Sensitive data found: %s", m.Value),
+				},
+				Level: level,
+				Locations: []location{
+					{
+						PhysicalLocation: physicalLocation{
+							ArtifactLocation: artifactLocation{
+								Uri: fr.Path,
+							},
+							Region: region{
+								StartLine:   m.Line,
+								StartColumn: m.Column,
+							},
+						},
+					},
+				},
+			}
+			results = append(results, res)
+		}
+	}
+
+	doc := sarifDocument{
+		Version: "2.1.0",
+		Schema:  "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+		Runs: []run{
+			{
+				Tool: tool{
+					Driver: toolComponent{
+						Name:    "DataSentinel",
+						Version: "1.0",
+					},
+				},
+				Results: results,
+			},
+		},
+	}
+
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(doc)
+}
+
 // Ensure all needed types are referenced
 var _ model.Level = model.L1Public
 var _ model.ProgressEvent = model.ProgressEvent{}
